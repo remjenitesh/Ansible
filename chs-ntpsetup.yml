@@ -1,0 +1,73 @@
+---
+- name: NTP-Server-Creation
+  hosts: localhost
+  connection: local
+  vars_prompt:
+  - name: name_tag
+    prompt: "Add Name tag"
+    private: no
+  - name: type_tag
+    prompt: "Add Type tag"
+    private: no
+#  - name: git_branch_tag
+#    prompt: "Type git branch name or tag to download jars"
+#    private: no
+  tasks:
+  - name: Creating an EC2 instance for {{ name_tag }}
+    ec2:
+     instance_type: t3.medium
+     key_name: OSPLSNSFTP
+     image: ami-063e3af9d2cc7fe94
+     region: ap-southeast-1
+     count: 1
+     instance_tags:
+       Name: "{{ name_tag }}"
+       Type: "{{ type_tag }}"
+     group_id: sg-0342f26c27e29a7f1
+     vpc_subnet_id: subnet-58669b01
+     termination_protection: yes
+     instance_profile_name: s3readonlyjenkinsarchive
+     wait: yes
+     volumes:
+       - device_name: /dev/sda1
+         volume_size: 25
+         delete_on_termination: True
+     user_data: |
+                #!/bin/bash
+                #wget http://10.113.213.20:81/NTP-setup/jdk-8u212-linux-x64.tar.gz
+                #wget http://10.113.213.20:81/NTP-setup/javajdk.sh
+                sudo apt-get update
+                sudo apt-get upgrade -y
+                cd /home/ubuntu
+                wget http://apps.orosoftsolutions.com:81/NTP-setup/NeoTradingPlatform.tar.gz
+                tar -xvf NeoTradingPlatform.tar.gz
+                tar -xvf jdk*.tar.gz
+                sudo mkdir -p /usr/lib/jvm/jdk1.8.0_212
+                sudo mv jdk1.8.0_212/* /usr/lib/jvm/jdk1.8.0_212/
+                sudo update-alternatives --install "/usr/bin/java" "java" "/usr/lib/jvm/jdk1.8.0_212/bin/java" 1010
+                sudo update-alternatives --install "/usr/bin/javac" "javac" "/usr/lib/jvm/jdk1.8.0_212/bin/javac" 1010
+                sudo update-alternatives --install "/usr/bin/javaws" "javaws" "/usr/lib/jvm/jdk1.8.0_212/bin/javaws" 1010
+                sudo cp ./javajdk.sh /etc/profile.d/
+                source /etc/profile.d/javajdk.sh
+                sudo cp ./NeoTradingPlatform/services/*.service /etc/systemd/system/
+                sudo systemctl daemon-reload
+                cd ./NeoTradingPlatform
+                tar -xvf hazelcast.tar.gz
+                sudo rm hazelcast.tar.gz
+                cd /home/ubuntu
+                sudo rm javajdk.sh ntpsetup.sh jdk-8u212-linux-x64.tar.gz NeoTradingPlatform.tar.gz
+                sudo rm -r jdk1.8.0_212
+                sudo apt-get install nginx stunnel4 ncdu awscli -y
+                cd /etc/
+                sudo chmod -R 777 nginx/ stunnel/
+                dd if=/dev/zero of=/swapfile bs=128M count=48
+                chmod 600 /swapfile
+                mkswap /swapfile
+                swapon /swapfile
+                swapon -s
+                echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
+                echo {{ name_tag }} > /etc/hostname
+                sudo chown -R ubuntu:ubuntu /home/ubuntu/NeoTradingPlatform
+                sudo chmod -R 6777 /home/ubuntu/NeoTradingPlatform/
+                echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCAzbp3SbkMbLFB0M6hup5EFPp5W+ZM4RU4DoFF2y6SRba343TUymOfW3kt+GAX7OKTxQaD4de2rqEkMYxo/vnsiP7LZjnmMKqz+X/qbzmVjrdc+lzM5f2BSgnYf3fa3zjo783WAoJ8UWR764trA7MhUB8O0yjd416CwzcOiUVCsFixSsyjn4rDmaYSdSzY/qZgCU/mnz1pa29H57GeOLOXiYKKOLvh1o0V/jusLoBejaH2zDC/FrNpOB1qz9xP0XfO7itMofF6Q8xObx5yQyFnOLYABavgnXAw/0qyFhgE4IlKkQy3kfN1EIhkxFaLcX4xAS9dYuQcw6faPWUzpfmB OSPLSNSFTP" >> /home/ubuntu/.ssh/authorized_keys
+                reboot
