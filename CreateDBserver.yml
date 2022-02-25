@@ -1,0 +1,72 @@
+
+- name: DB-Server-Creation
+  hosts: localhost
+  connection: local
+  vars_prompt:
+  - name: name_tag
+    prompt: "Add Name tag"
+    private: no
+  - name: type_tag
+    prompt: "Add Type tag"
+    private: no
+  tasks:
+  - name: Creating an EC2 instance for "{{ name_tag }}"
+    ec2:
+     instance_type: i3.large                           #Need to change to c5a or m5a 
+     key_name: OroKeyMumbai                               #Need to change keyfile
+     image: ami-0f5f7f26a7b5c639a                      #Need to change AMI as per new ubuntu version(18.04LTS is recommended)
+     region: ap-south-1                             #Need to change region to Mumbai
+     count: 1
+     instance_tags:
+       Name: "{{ name_tag }}"
+       Type: "{{ type_tag }}"
+     group_id: sg-06e0814415b7f9f08                     #Need to change the security group
+     vpc_subnet_id: subnet-0e080d07756731437                     #Need to change subnet
+     termination_protection: yes
+#     instance_profile_name: s3readonlyjenkinsarchive    #Need to keep this as it is unlsee IAM role needs to be changed
+     wait: yes
+     volumes:
+       - device_name: /dev/sda1
+         volume_size: 100
+       - device_name: /dev/sdf
+         volume_size: 250
+         delete_on_termination: True
+                    #Need to change below script as per requirement in the future
+     user_data: |
+                #!/bin/bash
+                sudo apt-get update
+                sudo apt-get upgrade -y
+                sudo apt autoremove
+                sudo apt autoclean
+                echo {{ name_tag }} > /etc/hostname
+                sudo systemctl stop mssql-server.service
+                sudo apt-get install expect
+                wget http://apps.orosoftsolutions.com:81/DB/mssql_sa.py
+                sudo chmod -R 777 mssql_sa.py
+                sudo ./mssql_sa.py
+                sudo systemctl start mssql-server.service
+                sudo /opt/mssql/bin/mssql-conf set sqlagent.enabled true
+                sudo mkfs.ext4 /dev/xvdf
+                sudo mkdir -p /Ddrive
+                sudo mount -a
+                cd /Ddrive/
+                sudo mkdir DB Logo temp
+                cd ..
+                sudo chmod -R 6777 /Ddrive/
+                sudo chown mssql:mssql -R /Ddrive/
+                sudo mkdir /smbshare
+                sudo dd if=/dev/zero of=/swapfile bs=128M count=60
+                sudo chmod 600 /swapfile
+                sudo mkswap /swapfile
+                sudo swapon /swapfile
+                sudo swapon -s
+                sudo mkdir /Eph 
+                sudo mkfs.ext4 /dev/nvme0n1 -F
+                sudo mount /dev/nvme0n1 /Eph/
+                sudo chown -R mssql:mssql /Eph/
+                sudo chmod -R 6777 /Eph/
+                sudo -i
+                wget http://apps.orosoftsolutions.com:81/DB/awsautomtfs.tar.gz
+                sudo tar -zxvf awsautomtfs.tar.gz
+                chmod -R 777 automount.sh
+                cat fstab_entry >> /etc/fstab
